@@ -4,6 +4,10 @@ require('dotenv').config()
 const app=express()
 const port=process.env.PORT||5000
 const { MongoClient, ServerApiVersion } = require('mongodb');
+
+app.use(express.json())
+app.use(cors())
+
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.nj8v5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -17,6 +21,21 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+
+    const userCollection=client.db('TaskManagement').collection('users')
+
+
+    app.post('/users',async(req,res)=>{
+      const newUser=req.body
+      const result=await userCollection.insertOne(newUser)
+      res.send(result)
+    })
+
+    app.get('/users',async(req,res)=>{
+      const cursor=userCollection.find()
+      const result=await cursor.toArray()
+      res.send(result)
+    })
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
     // Send a ping to confirm a successful connection
@@ -28,3 +47,11 @@ async function run() {
   }
 }
 run().catch(console.dir);
+
+app.get('/',(req,res)=>{
+  res.send('server running')
+})
+
+app.listen(port,()=>{
+  console.log(`server running on port : ${port}`)
+})
