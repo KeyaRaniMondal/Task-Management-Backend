@@ -3,7 +3,7 @@ const cors = require('cors')
 require('dotenv').config()
 const app = express()
 const port = process.env.PORT || 5000
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 app.use(express.json())
 app.use(cors())
@@ -49,11 +49,35 @@ async function run() {
 
     })
 
+
     app.get('/tasks', async (req, res) => {
       const cursor = taskCollection.find()
       const result = await cursor.toArray()
       res.send(result)
     })
+
+
+    // For updating tasks category instantly
+    app.put("/tasks/:id", async (req, res) => {
+      const taskId = req.params.id;
+      const { category } = req.body;
+
+      try {
+        const result = await taskCollection.updateOne(
+          { _id: new ObjectId(taskId) },
+          { $set: { category } }
+        );
+
+        if (result.modifiedCount > 0) {
+          res.send({ success: true, message: "Task category updated successfully." });
+        } else {
+          res.status(404).send({ success: false, message: "Task not found." });
+        }
+      } catch (error) {
+        console.error("Error updating task category:", error);
+        res.status(500).send({ success: false, message: "Internal server error." });
+      }
+    });
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
