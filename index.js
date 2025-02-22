@@ -31,37 +31,56 @@ async function run() {
     app.post('/users', async (req, res) => {
       const newUser = req.body;
       const existingUser = await userCollection.findOne({ email: newUser.email });
-    
+
       if (existingUser) {
         return res.status(400).json({ message: 'User with this email already exists' });
       }
       const result = await userCollection.insertOne(newUser);
-      res.status(201).json(result); 
+      res.status(201).json(result);
     });
-    
+
     app.get('/users', async (req, res) => {
       const cursor = userCollection.find();
       const result = await cursor.toArray();
       res.send(result);
     });
 
-    
+
     // For adding Tasks
+
     app.post('/tasks', async (req, res) => {
-      const item = req.body
-      const { email } = item
-      const user = await userCollection.findOne({ email })
-      const result = await taskCollection.insertOne(item)
-      res.send(result)
+      const item = req.body;
+      const { email } = item;
+      // Check if the user exists
+      const user = await userCollection.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
 
-    })
-
+      // Add the user's ID to the task
+      item.userId = user._id;
+      const result = await taskCollection.insertOne(item);
+      res.status(201).json(result);
+    });
 
     app.get('/tasks', async (req, res) => {
-      const cursor = taskCollection.find()
-      const result = await cursor.toArray()
-      res.send(result)
-    })
+      const { email } = req.query;
+
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+
+      // Find the user
+      const user = await userCollection.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Fetch tasks associated with the user
+      const cursor = taskCollection.find({ userId: user._id });
+      const result = await cursor.toArray();
+      res.json(result);
+    });
 
 
     // For updating tasks category instantly
@@ -89,15 +108,14 @@ async function run() {
 
     //For Deleting Tasks
 
-    app.delete('/tasks/:id',async(req,res)=>{
-      const taskID= req.params.id
-      try{
-        const result=await taskCollection.deleteOne({_id:new ObjectId(taskID)})
+    app.delete('/tasks/:id', async (req, res) => {
+      const taskID = req.params.id
+      try {
+        const result = await taskCollection.deleteOne({ _id: new ObjectId(taskID) })
         res.send(result)
       }
-      catch(error)
-      {
-        res.status(500).json({message: 'Failed to delete tasks',error})
+      catch (error) {
+        res.status(500).json({ message: 'Failed to delete tasks', error })
       }
     })
     // Connect the client to the server	(optional starting in v4.7)
