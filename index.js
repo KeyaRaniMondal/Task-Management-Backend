@@ -27,18 +27,25 @@ async function run() {
     const taskCollection = dbs.collection('tasks')
 
     // For creating users
+
     app.post('/users', async (req, res) => {
-      const newUser = req.body
-      const result = await userCollection.insertOne(newUser)
-      res.send(result)
-    })
-
+      const newUser = req.body;
+      const existingUser = await userCollection.findOne({ email: newUser.email });
+    
+      if (existingUser) {
+        return res.status(400).json({ message: 'User with this email already exists' });
+      }
+      const result = await userCollection.insertOne(newUser);
+      res.status(201).json(result); 
+    });
+    
     app.get('/users', async (req, res) => {
-      const cursor = userCollection.find()
-      const result = await cursor.toArray()
-      res.send(result)
-    })
+      const cursor = userCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
 
+    
     // For adding Tasks
     app.post('/tasks', async (req, res) => {
       const item = req.body
@@ -78,6 +85,21 @@ async function run() {
         res.status(500).send({ success: false, message: "Internal server error." });
       }
     });
+
+
+    //For Deleting Tasks
+
+    app.delete('/tasks/:id',async(req,res)=>{
+      const taskID= req.params.id
+      try{
+        const result=await taskCollection.deleteOne({_id:new ObjectId(taskID)})
+        res.send(result)
+      }
+      catch(error)
+      {
+        res.status(500).json({message: 'Failed to delete tasks',error})
+      }
+    })
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
