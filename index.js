@@ -47,43 +47,103 @@ async function run() {
 
 
     // For adding Tasks
+    app.post("/tasks", async (req, res) => {
+      try {
+        const item = req.body;
+        const { email } = item;
 
-    app.post('/tasks', async (req, res) => {
-      const item = req.body;
-      const { email } = item;
-      // Check if the user exists
-      const user = await userCollection.findOne({ email });
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+        const user = await userCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        item.userId = user._id;
+
+        const result = await taskCollection.insertOne(item);
+        const insertedTask = await taskCollection.findOne({ _id: result.insertedId });
+
+        res.status(201).json(insertedTask);
+      } catch (error) {
+        console.error("Error adding task:", error);
+        res.status(500).json({ message: "Internal Server Error" });
       }
-
-      // Add the user's ID to the task
-      item.userId = user._id;
-      const result = await taskCollection.insertOne(item);
-      res.status(201).json(result);
     });
 
-    app.get('/tasks', async (req, res) => {
-      const { email } = req.query;
+    // Get tasks
+    app.get("/tasks", async (req, res) => {
+      try {
+        const { email } = req.query;
 
-      if (!email) {
-        return res.status(400).json({ message: 'Email is required' });
+        if (!email) {
+          return res.status(400).json({ message: "Email is required" });
+        }
+
+        const user = await userCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        const now = new Date();
+        const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+        // Fetch all user tasks
+        const tasks = await taskCollection.find({ userId: user._id }).toArray();
+
+        // Categorize and update in database if needed
+        const updates = tasks.map(async (task) => {
+          let newCategory = task.category;
+          const dueDate = new Date(task.dueDate);
+
+          if (dueDate < oneDayAgo && task.category !== "Done") {
+            newCategory = "Done";
+          } else if (dueDate <= now && dueDate >= oneDayAgo && task.category !== "In Progress") {
+            newCategory = "In Progress";
+          } else if (dueDate > now && task.category !== "To-Do") {
+            newCategory = "To-Do";
+          }
+
+          if (newCategory !== task.category) {
+            await taskCollection.updateOne(
+              { _id: new ObjectId(task._id) },
+              { $set: { category: newCategory } }
+            );
+          }
+        });
+
+        await Promise.all(updates);
+        res.json(tasks);
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+        res.status(500).json({ message: "Internal Server Error" });
       }
-
-      // Find the user
-      const user = await userCollection.findOne({ email });
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
-      }
-
-      // Fetch tasks associated with the user
-      const cursor = taskCollection.find({ userId: user._id });
-      const result = await cursor.toArray();
-      res.json(result);
     });
 
+    // Real-time task updates using Server-Sent Events (SSE)
+    app.get("/task-updates", async (req, res) => {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
 
-    // For updating tasks category instantly
+      const changeStream = taskCollection.watch([], { fullDocument: "updateLookup" });
+
+      changeStream.on("change", async (change) => {
+        console.log("Change detected:", change);
+
+        if (change.operationType === "insert" || change.operationType === "update") {
+          res.write(`data: ${JSON.stringify(change.fullDocument)}\n\n`);
+        }
+      });
+
+      // prevent connection timeout
+      const keepAlive = setInterval(() => res.write("data: {}\n\n"), 30000);
+
+      req.on("close", () => {
+        clearInterval(keepAlive);
+        changeStream.close();
+      });
+    });
+
+    // Update task category manually
     app.put("/tasks/:id", async (req, res) => {
       const taskId = req.params.id;
       const { category } = req.body;
